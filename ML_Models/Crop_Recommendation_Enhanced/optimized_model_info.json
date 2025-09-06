@@ -1,0 +1,87 @@
+{
+  "model_type": "Optimized XGBoost with Geographical Features",
+  "version": "2.0",
+  "accuracy": 0.9931818181818182,
+  "cross_validation_score": 0.997159090909091,
+  "best_parameters": {
+    "colsample_bytree": 0.8,
+    "learning_rate": 0.01,
+    "max_depth": 6,
+    "n_estimators": 200,
+    "subsample": 1.0
+  },
+  "feature_names": [
+    "latitude",
+    "longitude",
+    "N",
+    "P",
+    "K",
+    "temperature",
+    "humidity",
+    "ph",
+    "rainfall",
+    "agro_zone_encoded"
+  ],
+  "crop_classes": [
+    "apple",
+    "banana",
+    "blackgram",
+    "chickpea",
+    "coconut",
+    "coffee",
+    "cotton",
+    "grapes",
+    "jute",
+    "kidneybeans",
+    "lentil",
+    "maize",
+    "mango",
+    "mothbeans",
+    "mungbean",
+    "muskmelon",
+    "orange",
+    "papaya",
+    "pigeonpeas",
+    "pomegranate",
+    "rice",
+    "watermelon"
+  ],
+  "agro_zones": [
+    "central",
+    "east",
+    "north",
+    "south",
+    "west"
+  ],
+  "training_date": "2025-09-05",
+  "training_time": "17:08:32",
+  "dataset_size": 2200,
+  "features_count": 10,
+  "geographical_features_included": true,
+  "hyperparameter_tuned": true,
+  "model_improvements": [
+    "Added geographical features (latitude, longitude)",
+    "Implemented agro-climatic zone classification",
+    "Performed comprehensive hyperparameter tuning",
+    "Enhanced regional accuracy analysis"
+  ],
+  "performance_metrics": {
+    "training_accuracy": 1.0,
+    "test_accuracy": 0.9931818181818182,
+    "cv_score": 0.997159090909091,
+    "feature_importance_top_3": [
+      {
+        "feature": "rainfall",
+        "importance": 0.130345419049263
+      },
+      {
+        "feature": "K",
+        "importance": 0.1272541880607605
+      },
+      {
+        "feature": "humidity",
+        "importance": 0.1206044927239418
+      }
+    ]
+  }
+}
