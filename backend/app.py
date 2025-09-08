@@ -21,7 +21,7 @@ app = Flask(__name__)
 CORS(app, origins=[
     "https://cropsmart.netlify.app",   # your Netlify hosted frontend URL
     "http://localhost:3000",           # frontend localhost for development
-    "http://127.0.0.1:3000",          # alternative localhost
+    "ngrok http --url=agustina-unpervious-lillia.ngrok-free.app 5000",          # alternative localhost
     "*"  # Allow all during development (remove in production)
 ])
 
