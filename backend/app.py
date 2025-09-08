@@ -16,7 +16,14 @@ label_encoder = joblib.load(os.path.join(MODEL_DIR, 'optimized_label_encoder.pkl
 zone_encoder = joblib.load(os.path.join(MODEL_DIR, 'agro_zone_encoder.pkl'))
 
 app = Flask(__name__)
-CORS(app)
+
+# Fixed CORS configuration
+CORS(app, origins=[
+    "https://cropsmart.netlify.app",   # your Netlify hosted frontend URL
+    "http://localhost:3000",           # frontend localhost for development
+    "http://127.0.0.1:3000",          # alternative localhost
+    "*"  # Allow all during development (remove in production)
+])
 
 # Bhuvan API Configuration
 BHUVAN_ENDPOINT = "https://bhuvan-app1.nrsc.gov.in/api/api_proximity/curl_village_geocode.php"
@@ -27,17 +34,16 @@ def load_bhuvan_token():
         with open("bhuvan_token.txt", "r") as f:
             token = f.read().strip()
             if token:
-                print(f"✅ Loaded Bhuvan token: {token[:10]}...")  # Show first 10 chars for debug
+                print(f"✅ Loaded Bhuvan token: {token[:10]}...")
                 return token
             else:
                 print("❌ Empty token file")
                 return None
     except FileNotFoundError:
         print("❌ bhuvan_token.txt file not found - creating with default token")
-        # Create file with current token as fallback
         with open("bhuvan_token.txt", "w") as f:
-            f.write("bebf6ff0e22655844811f24cda6f91a104fcc52e")
-        return "bebf6ff0e22655844811f24cda6f91a104fcc52e"
+            f.write("819ea65d63df7b4382382196c2f534d55f94d124")
+        return "819ea65d63df7b4382382196c2f534d55f94d124"
     except Exception as e:
         print(f"❌ Error loading Bhuvan token: {e}")
         return None
@@ -71,8 +77,39 @@ def get_environmental_data(lat, lon):
     data['agro_zone'] = agro_zone
     return data
 
+def extract_valid_coordinates(data):
+    """Extract valid coordinates from Bhuvan API response - handles both formats"""
+    if isinstance(data, list) and len(data) > 0:
+        for item in data:
+            try:
+                # Try both field name variations - Bhuvan uses different names
+                lat = float(item.get('latitude') or item.get('lat') or 0)
+                lon = float(item.get('longitude') or item.get('lng') or 0)
+                
+                # Validate coordinate ranges and exclude zeros
+                if -90 <= lat <= 90 and -180 <= lon <= 180 and lat != 0 and lon != 0:
+                    print(f"🎯 Found valid coordinates in list: ({lat}, {lon})")
+                    return lat, lon, item
+            except (ValueError, TypeError):
+                continue
+    
+    elif isinstance(data, dict):
+        try:
+            # Try both field name variations
+            lat = float(data.get('latitude') or data.get('lat') or 0)
+            lon = float(data.get('longitude') or data.get('lng') or 0)
+            
+            if -90 <= lat <= 90 and -180 <= lon <= 180 and lat != 0 and lon != 0:
+                print(f"🎯 Found valid coordinates in dict: ({lat}, {lon})")
+                return lat, lon, data
+        except (ValueError, TypeError):
+            pass
+    
+    print("❌ No valid coordinates found in response")
+    return None, None, None
+
 def search_village_bhuvan(village_name, max_retries=3):
-    """Search village using Bhuvan API with dynamic token loading"""
+    """Search village using Bhuvan API with dynamic token loading - FIXED VERSION"""
     
     # Load token fresh for each request
     token = load_bhuvan_token()
@@ -86,54 +123,55 @@ def search_village_bhuvan(village_name, max_retries=3):
             params = {'village': village_name, 'token': token}
             response = requests.get(BHUVAN_ENDPOINT, params=params, timeout=15)
             
+            print(f"📡 Status: {response.status_code}")
+            print(f"📄 Response: {response.text[:200]}...")  # Show more of the response
+            
             if response.status_code == 200:
+                # Check if response is just "false"
+                if response.text.strip().lower() == 'false':
+                    print("❌ Bhuvan returned 'false' - village not found")
+                    return {'success': False, 'error': 'Village not found in Bhuvan database'}
+                
                 try:
                     data = response.json()
-                except:
+                    print(f"📊 JSON Data: {data}")
+                except json.JSONDecodeError:
+                    print("❌ Invalid JSON response")
                     return {'success': False, 'error': 'Invalid JSON response from Bhuvan API'}
                 
-                # Handle different response formats
-                if isinstance(data, dict):
-                    if 'error' in data:
-                        return {'success': False, 'error': data.get('error_description', data.get('error'))}
-                    
-                    if 'lat' in data and 'lng' in data:
-                        return {
-                            'success': True,
-                            'latitude': float(data.get('lat', 0)),
-                            'longitude': float(data.get('lng', 0)),
-                            'village_name': data.get('village', village_name),
-                            'district': data.get('district', ''),
-                            'state': data.get('state', ''),
-                            'raw_data': data
-                        }
+                # Extract coordinates using improved logic
+                lat, lon, location_data = extract_valid_coordinates(data)
                 
-                elif isinstance(data, list) and len(data) > 0:
-                    first_result = data[0]
+                if lat is not None and lon is not None:
+                    print(f"✅ Extracted coordinates: ({lat}, {lon})")
                     return {
                         'success': True,
-                        'latitude': float(first_result.get('lat', 0)),
-                        'longitude': float(first_result.get('lng', 0)),
-                        'village_name': first_result.get('village', village_name),
-                        'district': first_result.get('district', ''),
-                        'state': first_result.get('state', ''),
-                        'raw_data': first_result
+                        'latitude': lat,
+                        'longitude': lon,
+                        'village_name': location_data.get('name', village_name),
+                        'district': location_data.get('dist_name', location_data.get('district', '')),
+                        'state': location_data.get('state_name', location_data.get('state', '')),
+                        'raw_data': location_data
                     }
-                
-                return {'success': False, 'error': 'No valid coordinates found in Bhuvan response'}
+                else:
+                    print("❌ No valid coordinates found")
+                    return {'success': False, 'error': 'No valid coordinates found in Bhuvan response'}
             
             else:
+                print(f"❌ HTTP Error: {response.status_code}")
                 if attempt < max_retries - 1:
                     time.sleep(2)
                     continue
                 return {'success': False, 'error': f'Bhuvan API HTTP {response.status_code}'}
             
         except requests.exceptions.Timeout:
+            print(f"⏰ Request timeout (Attempt {attempt + 1})")
             if attempt < max_retries - 1:
                 time.sleep(2)
                 continue
             return {'success': False, 'error': 'Bhuvan API timeout after multiple attempts'}
         except Exception as e:
+            print(f"💥 Exception: {e}")
             if attempt < max_retries - 1:
                 time.sleep(2)
                 continue
@@ -260,7 +298,7 @@ def recommend_by_coordinates():
 
 @app.route('/api/recommend-by-village', methods=['POST'])
 def recommend_by_village():
-    """Get crop recommendation by village name using Bhuvan API"""
+    """Get crop recommendation by village name using Bhuvan API - FIXED VERSION"""
     try:
         data = request.json
         village_name = data.get('village', '').strip()
@@ -273,7 +311,7 @@ def recommend_by_village():
         
         print(f"🔍 Searching for village: {village_name}")
         
-        # Search village using Bhuvan API (with dynamic token loading)
+        # Search village using Bhuvan API (with fixed coordinate extraction)
         village_result = search_village_bhuvan(village_name)
         
         if not village_result['success']:
@@ -288,7 +326,7 @@ def recommend_by_village():
         lat = village_result['latitude']
         lon = village_result['longitude']
         
-        # Validate coordinates
+        # This validation should rarely trigger now with improved extraction
         if lat == 0 and lon == 0:
             return jsonify({
                 "success": False,
@@ -335,16 +373,16 @@ def recommend_by_village():
         return jsonify(response)
         
     except Exception as e:
+        print(f"💥 Error in recommend_by_village: {str(e)}")
         return jsonify({
             "success": False,
             "error": f"Prediction failed: {str(e)}",
             "bhuvan_api_status": "error"
         }), 500
 
-# Add endpoint to update token (optional - for testing)
 @app.route('/api/update-token', methods=['POST'])
 def update_token():
-    """Update Bhuvan API token via API call (for testing)"""
+    """Update Bhuvan API token via API call"""
     try:
         data = request.json
         new_token = data.get('token', '').strip()
@@ -432,4 +470,5 @@ if __name__ == '__main__':
     print("   GET /api/model-info")
     print("   GET /api/supported-crops")
     print("   GET /api/agro-zones")
+    
     app.run(host='127.0.0.1', port=5000, debug=True)

@@ -1,6 +1,21 @@
 export const API_CONFIG = {
   // Base URLs
-  BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || "",
+  get BASE_URL() {
+    if (typeof window !== "undefined") {
+      // Return injected URL from window or localStorage if present (e.g. injected by app wrapper)
+      const windowApiUrl = (window as any).NEXT_PUBLIC_API_BASE_URL;
+      const localStorageApiUrl = localStorage.getItem("NEXT_PUBLIC_API_BASE_URL");
+      
+      return (
+        windowApiUrl ||
+        localStorageApiUrl ||
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        ""
+      );
+    }
+    // Fallback on server or if window undefined
+    return process.env.NEXT_PUBLIC_API_BASE_URL || "";
+  },
 
   // Timeouts
   REQUEST_TIMEOUT: 30000, // 30 seconds
@@ -48,49 +63,7 @@ export const API_CONFIG = {
     RECOMMENDATION_RECEIVED: "Crop recommendation received successfully!",
     LOGIN_SUCCESS: "Signed in successfully!",
     REGISTER_SUCCESS: "Account created successfully!",
-    PASSWORD_RESET_SENT: "Password reset instructions sent to your email.",
+    PASSWORD_RESET: "Password reset instructions sent to your email.",
     CONTACT_FORM_SENT: "Your message has been sent successfully!",
   },
-} as const
-
-// HTTP status codes
-export const HTTP_STATUS = {
-  OK: 200,
-  CREATED: 201,
-  BAD_REQUEST: 400,
-  UNAUTHORIZED: 401,
-  FORBIDDEN: 403,
-  NOT_FOUND: 404,
-  INTERNAL_SERVER_ERROR: 500,
-  SERVICE_UNAVAILABLE: 503,
-} as const
-
-// API response types
-export type ApiResponse<T> = {
-  data: T
-  message?: string
-  status: number
-}
-
-export type ApiErrorResponse = {
-  error: string
-  message?: string
-  status: number
-  code?: string
-}
-
-// Validation schemas (for future use with form validation)
-export const VALIDATION_RULES = {
-  EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-  PHONE: /^[+]?[1-9][\d]{0,15}$/,
-  COORDINATES: {
-    LATITUDE: { min: -90, max: 90 },
-    LONGITUDE: { min: -180, max: 180 },
-  },
-  PASSWORD: {
-    MIN_LENGTH: 8,
-    REQUIRE_UPPERCASE: true,
-    REQUIRE_LOWERCASE: true,
-    REQUIRE_NUMBER: true,
-  },
-} as const
+} as const;
