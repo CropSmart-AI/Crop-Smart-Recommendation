@@ -19,8 +19,28 @@ app = Flask(__name__)
 CORS(app)
 
 # Bhuvan API Configuration
-BHUVAN_API_TOKEN = "bebf6ff0e22655844811f24cda6f91a104fcc52e"
 BHUVAN_ENDPOINT = "https://bhuvan-app1.nrsc.gov.in/api/api_proximity/curl_village_geocode.php"
+
+def load_bhuvan_token():
+    """Load Bhuvan API token from file - updates automatically when file changes"""
+    try:
+        with open("bhuvan_token.txt", "r") as f:
+            token = f.read().strip()
+            if token:
+                print(f"✅ Loaded Bhuvan token: {token[:10]}...")  # Show first 10 chars for debug
+                return token
+            else:
+                print("❌ Empty token file")
+                return None
+    except FileNotFoundError:
+        print("❌ bhuvan_token.txt file not found - creating with default token")
+        # Create file with current token as fallback
+        with open("bhuvan_token.txt", "w") as f:
+            f.write("bebf6ff0e22655844811f24cda6f91a104fcc52e")
+        return "bebf6ff0e22655844811f24cda6f91a104fcc52e"
+    except Exception as e:
+        print(f"❌ Error loading Bhuvan token: {e}")
+        return None
 
 def get_agro_zone_from_coordinates(lat, lon):
     """Determine agro-climatic zone from coordinates"""
@@ -52,13 +72,18 @@ def get_environmental_data(lat, lon):
     return data
 
 def search_village_bhuvan(village_name, max_retries=3):
-    """Search village using Bhuvan API"""
+    """Search village using Bhuvan API with dynamic token loading"""
+    
+    # Load token fresh for each request
+    token = load_bhuvan_token()
+    if not token:
+        return {'success': False, 'error': 'Bhuvan API token not available'}
     
     for attempt in range(max_retries):
         try:
             print(f"🔍 Searching village '{village_name}' via Bhuvan API (Attempt {attempt + 1}/{max_retries})")
             
-            params = {'village': village_name, 'token': BHUVAN_API_TOKEN}
+            params = {'village': village_name, 'token': token}
             response = requests.get(BHUVAN_ENDPOINT, params=params, timeout=15)
             
             if response.status_code == 200:
@@ -156,9 +181,14 @@ def make_prediction(lat, lon, env_data):
 
 @app.route('/')
 def home():
+    # Show current token status for debugging
+    token = load_bhuvan_token()
+    token_status = "✅ Active" if token else "❌ Missing"
+    
     return jsonify({
         "message": "CropSmart AI Backend API",
         "status": "running",
+        "bhuvan_token_status": token_status,
         "endpoints": [
             "POST /api/recommend-by-coordinates",
             "POST /api/recommend-by-village", 
@@ -243,7 +273,7 @@ def recommend_by_village():
         
         print(f"🔍 Searching for village: {village_name}")
         
-        # Search village using Bhuvan API
+        # Search village using Bhuvan API (with dynamic token loading)
         village_result = search_village_bhuvan(village_name)
         
         if not village_result['success']:
@@ -311,6 +341,37 @@ def recommend_by_village():
             "bhuvan_api_status": "error"
         }), 500
 
+# Add endpoint to update token (optional - for testing)
+@app.route('/api/update-token', methods=['POST'])
+def update_token():
+    """Update Bhuvan API token via API call (for testing)"""
+    try:
+        data = request.json
+        new_token = data.get('token', '').strip()
+        
+        if not new_token:
+            return jsonify({
+                "success": False,
+                "error": "Token is required"
+            }), 400
+        
+        # Save new token to file
+        with open("bhuvan_token.txt", "w") as f:
+            f.write(new_token)
+        
+        return jsonify({
+            "success": True,
+            "message": "Token updated successfully",
+            "token_preview": f"{new_token[:10]}...",
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Token update failed: {str(e)}"
+        }), 500
+
 @app.route('/api/model-info', methods=['GET'])
 def get_model_info():
     return jsonify({
@@ -355,10 +416,19 @@ if __name__ == '__main__':
     print("🌾 CropSmart AI Backend Starting...")
     print(f"📊 Model loaded: {len(label_encoder.classes_)} crops supported")
     print(f"🗺️ Agro-zones: {len(zone_encoder.classes_)} zones")
+    
+    # Check token status on startup
+    token = load_bhuvan_token()
+    if token:
+        print(f"🔑 Bhuvan API token loaded: {token[:10]}...")
+    else:
+        print("❌ No Bhuvan API token found - check bhuvan_token.txt")
+    
     print("🚀 Server running on http://127.0.0.1:5000")
     print("✅ Available endpoints:")
     print("   POST /api/recommend-by-coordinates")
     print("   POST /api/recommend-by-village")
+    print("   POST /api/update-token")
     print("   GET /api/model-info")
     print("   GET /api/supported-crops")
     print("   GET /api/agro-zones")
